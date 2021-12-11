@@ -90,17 +90,18 @@ type TCPFwdEntry struct {
 }
 
 func (e *TCPFwdEntry) L2R() {
+	defer e.connL.Close()
 	buf := make([]byte, 2048)
 	for {
 		n, err := e.connL.Read(buf)
 		if err != nil {
-			log.Println(err)
+			log.Println("TCP L2R", err)
 			e.connR.Close()
 			return
 		}
 		_, err = e.connR.Write(buf[:n])
 		if err != nil {
-			log.Println(err)
+			log.Println("TCP L2R", err)
 			e.connR.Close()
 			return
 		}
@@ -108,17 +109,18 @@ func (e *TCPFwdEntry) L2R() {
 }
 
 func (e *TCPFwdEntry) R2L() {
+	defer e.connR.Close()
 	buf := make([]byte, 2048)
 	for {
 		n, err := e.connR.Read(buf)
 		if err != nil {
-			log.Println(err)
+			log.Println("TCP R2L", err)
 			e.connL.Close()
 			return
 		}
 		_, err = e.connL.Write(buf[:n])
 		if err != nil {
-			log.Println(err)
+			log.Println("TCP R2L", err)
 			e.connL.Close()
 			return
 		}
@@ -130,6 +132,7 @@ func (e *TCPFwdEntry) Run() {
 	connR, err := net.Dial(e.rule.Proto, addr)
 	if err != nil {
 		log.Println("Dial remote failed", err)
+		e.connL.Close()
 		return
 	}
 	e.connR = connR
@@ -213,6 +216,8 @@ func RunFwdRuleUDP(rule FwdRule) {
 		log.Println(err)
 		return
 	}
+	defer connL.Close()
+
 	buf := make([]byte, 65535)
 	fwdMap := make(map[string]*UDPFwdEntry)
 	for {

@@ -1,7 +1,8 @@
 {
 	"rules" : [
-		{ "proto": "tcp", "lAddr": "", "lPort": 3389, "rAddr": "my.destination.com", "rPort": 3389, "ipset": "JiangSu" },
-		{ "proto": "udp", "lAddr": "", "lPort": 3389, "rAddr": "my.destination.com", "rPort": 3389, "ipset": "JiangSu" }
+		{ "proto": "tcp", "lAddr": "", "lPort": 22, "rAddr": "ku.pcmgr.org", "rPort": 22, "ipset": "JiangSu" },
+		{ "proto": "tcp", "lAddr": "", "lPort": 33389, "rAddr": "dd.pcmgr.org", "rPort": 3389, "ipset": "JiangSu" },
+		{ "proto": "udp", "lAddr": "", "lPort": 33389, "rAddr": "dd.pcmgr.org", "rPort": 3389, "ipset": "JiangSu" }
 	],
 
 	"ipsets" : {
