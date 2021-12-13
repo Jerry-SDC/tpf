@@ -13,30 +13,38 @@ import (
 	"time"
 )
 
+type wListItem struct {
+	wlType int
+	n      *net.IPNet
+	ip     []net.IP
+}
+
 type FwdRule struct {
-	Proto     string `json:"proto"`
-	LAddr     string `json:"lAddr"`
-	LPort     int    `json:"lPort"`
-	RAddr     string `json:"rAddr"`
-	RPort     int    `json:"rPort"`
-	IpSetName string `json:"ipset"`
-	IpNets    *[]*net.IPNet
+	Proto string `json:"proto"`
+	LAddr string `json:"lAddr"`
+	LPort int    `json:"lPort"`
+	RAddr string `json:"rAddr"`
+	RPort int    `json:"rPort"`
+	WList string `json:"whitelist"`
+	wl    []wListItem
 }
 
 func (r *FwdRule) CheckIp(ip net.IP) bool {
-	if r.IpNets == nil {
+	if len(r.wl) == 0 {
+		log.Println("Empty wl to check ip", ip)
 		return true
 	}
-	// if len(*r.IpNets) == 0 {
-	// 	log.Println("IPset is empty, always match.")
-	// 	return true
-	// }
-	for i := range *r.IpNets {
-		net := (*r.IpNets)[i]
-		// log.Println("CheckIP", ip, net)
-		if net.Contains(ip) {
-			// log.Println("IP Check OK")
+
+	for i := range r.wl {
+		if r.wl[i].wlType == 1 && r.wl[i].n.Contains(ip) {
 			return true
+		}
+		if r.wl[i].wlType == 2 {
+			for j := range r.wl[i].ip {
+				if r.wl[i].ip[j].Equal(ip) {
+					return true
+				}
+			}
 		}
 	}
 	return false
@@ -45,10 +53,9 @@ func (r *FwdRule) CheckIp(ip net.IP) bool {
 type Config struct {
 	Rules    []FwdRule           `json:"rules"`
 	IpSetMap map[string][]string `json:"ipsets"`
-	IpNets   map[string][]*net.IPNet
 }
 
-func (c *Config) LoadJson(filename string) {
+func (c *Config) LoadFromFile(filename string) {
 	data, err := ioutil.ReadFile(filename)
 	if err != nil {
 		log.Println(err)
@@ -59,28 +66,49 @@ func (c *Config) LoadJson(filename string) {
 		log.Println(err)
 		return
 	}
-	c.IpNets = make(map[string][]*net.IPNet)
-	for n, v := range c.IpSetMap {
-		log.Println("Processing IpSet", n, v)
-		nets := make([]*net.IPNet, len(v))
-		for i := range v {
-			log.Println("processing", n, v[i])
-			_, ipnet, err := net.ParseCIDR(v[i])
-			if err != nil {
-				log.Println(err)
+
+	wlMap := make(map[string][]wListItem)
+
+	// Process items in ipset to internal format
+	for name, strWl := range c.IpSetMap {
+		wlItem := make([]wListItem, len(strWl))
+		for i := range strWl {
+			_, ipnet, err := net.ParseCIDR(strWl[i])
+			if err == nil {
+				wlItem[i] = wListItem{
+					wlType: 1,
+					n:      ipnet,
+				}
 				continue
 			}
-			nets[i] = ipnet
+			ips, err := net.LookupIP(strWl[i])
+			if err == nil {
+				wlItem[i] = wListItem{
+					wlType: 2,
+					ip:     ips,
+				}
+				continue
+			}
+			log.Println("Failed to process", strWl[i])
 		}
-		c.IpNets[n] = nets
+		wlMap[name] = wlItem
 	}
+
+	// set wlist items into rules
 	for i := range c.Rules {
-		ipnets, exists := c.IpNets[c.Rules[i].IpSetName]
-		if exists {
-			c.Rules[i].IpNets = &ipnets
+		rule := &c.Rules[i]
+		rule.wl = make([]wListItem, 0)
+		names := strings.Split(rule.WList, ",")
+		for i := range names {
+			name := strings.Trim(names[i], " ")
+			ipnets, exists := wlMap[name]
+			if exists {
+				rule.wl = append(rule.wl, ipnets...)
+			} else {
+				log.Println("Invalid ipset name", name)
+			}
 		}
 	}
-	log.Println("Load config OK")
 }
 
 type TCPFwdEntry struct {
@@ -156,15 +184,16 @@ func RunFwdRuleTCP(rule FwdRule) {
 			log.Println(err)
 			return
 		}
-		log.Println("Accept from", conn.RemoteAddr())
+		log.Println("New TCP connection from", conn.RemoteAddr())
 		rIpStr := conn.RemoteAddr().String()
-		rIpStr = rIpStr[:strings.LastIndex(rIpStr, ":")]
-		rIpStr = strings.Trim(rIpStr, "[]")
-		// log.Println("rIpStr:", rIpStr)
-		ip := net.ParseIP(rIpStr)
-		// log.Println("ip:", ip)
+		host, _, err := net.SplitHostPort(rIpStr)
+		if err != nil {
+			conn.Close()
+			continue
+		}
+		ip := net.ParseIP(host)
 		if !rule.CheckIp(ip) {
-			log.Println("Remote not in set, ignore.")
+			log.Printf("Remote IP [%s] not in allowed list, close connection.\n", host)
 			conn.Close()
 			continue
 		}
@@ -265,7 +294,6 @@ func RunFwdRuleUDP(rule FwdRule) {
 }
 
 func RunForwardRule(info FwdRule) {
-	log.Println("Run forward rule:", info)
 	if info.Proto == "udp" || info.Proto == "udp6" {
 		RunFwdRuleUDP(info)
 	} else {
@@ -308,7 +336,7 @@ func parseFwdRules(args []string) []FwdRule {
 func main() {
 	setupSignalHandler()
 	conf := Config{}
-	conf.LoadJson("config.json")
+	conf.LoadFromFile("config.json")
 	// log.Println(conf)
 	rules := parseFwdRules(os.Args[1:])
 	for idx := range rules {

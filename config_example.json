@@ -1,0 +1,29 @@
+{
+	"rules" : [
+		{ "proto": "tcp", "lAddr": "", "lPort": 22,    "rAddr": "ssh.mydomain.com", "rPort": 22,   "whitelist": "loopback, myVps, JS" },
+		{ "proto": "udp", "lAddr": "", "lPort": 53,    "rAddr": "8.8.8.8",          "rPort": 53,   "whitelist": "loopback, myVps, JS" },
+		{ "proto": "tcp", "lAddr": "", "lPort": 33389, "rAddr": "rdp.mydomain.com", "rPort": 3389, "whitelist": "loopback, myVps, JS" },
+		{ "proto": "udp", "lAddr": "", "lPort": 33389, "rAddr": "rdp.mydomain.com", "rPort": 3389, "whitelist": "loopback, myVps, JS" }
+	],
+
+	"ipsets" : {
+		"loopback": [
+			"127.0.0.1",
+			"::1"
+		],
+		"myVps": [
+			"a.mydomain.com",
+			"b.mydomain.com",
+			"222.1.2.0/24",
+			"123.234.112.8"
+		],
+		"JS": [
+			"49.64.0.0/10",
+			"112.83.0.0/13",
+			"122.96.0.0/15",
+			"153.34.0.0/15",
+			"153.36.0.0/15",
+			"157.0.0.0/16"
+		]
+	}
+}
