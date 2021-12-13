@@ -97,10 +97,16 @@ func (c *Config) LoadFromFile(filename string) {
 	// set wlist items into rules
 	for i := range c.Rules {
 		rule := &c.Rules[i]
+		if rule.WList == "" {
+			continue
+		}
 		rule.wl = make([]wListItem, 0)
 		names := strings.Split(rule.WList, ",")
 		for i := range names {
 			name := strings.Trim(names[i], " ")
+			if name == "" {
+				continue
+			}
 			ipnets, exists := wlMap[name]
 			if exists {
 				rule.wl = append(rule.wl, ipnets...)
