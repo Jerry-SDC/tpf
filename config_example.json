@@ -1,19 +1,38 @@
 {
 	"rules" : [
-		{ "proto": "tcp", "lAddr": "", "lPort": 22,    "rAddr": "ssh.mydomain.com", "rPort": 22 },
-		{ "proto": "udp", "lAddr": "", "lPort": 53,    "rAddr": "8.8.8.8",          "rPort": 53,   "whitelist": "loopback, myVps, JS" },
-		{ "proto": "tcp", "lAddr": "", "lPort": 33389, "rAddr": "rdp.mydomain.com", "rPort": 3389, "whitelist": "loopback, myVps, JS" },
-		{ "proto": "udp", "lAddr": "", "lPort": 33389, "rAddr": "rdp.mydomain.com", "rPort": 3389, "whitelist": "loopback, myVps, JS" }
+		{ "enable": true, "proto": "tcp", "lAddr": "", "lPort": 8443,  "backend": "H_OA" },
+		{ "enable": true, "proto": "tcp", "lAddr": "", "lPort": 22,    "rAddr": "1.1.1.1", "rPort": 22 },
+		{ "enable": false, "proto": "udp", "lAddr": "", "lPort": 53,    "rAddr": "8.8.8.8",          "rPort": 53,   "whitelist": "loopback, myVps, JS" },
+		{ "enable": false, "proto": "tcp", "lAddr": "", "lPort": 33389, "rAddr": "rdp.mydomain.com", "rPort": 3389, "whitelist": "loopback, myVps, JS" },
+		{ "enable": false, "proto": "udp", "lAddr": "", "lPort": 33389, "rAddr": "rdp.mydomain.com", "rPort": 3389, "whitelist": "loopback, myVps, JS" }
 	],
-
+	"backends" : {
+		"H_OA": {
+			"detectMethod": "connect",
+			"detectInterval": 5,
+			"mode": "failover",
+			"rHosts": [
+				{ "enable": true, "proto": "tcp", "rAddr": "172.31.7.64", "rPort": 9443 },
+				{ "enable": true, "proto": "tcp", "rAddr": "172.21.1.217", "rPort": 9443 },
+				{ "enable": true, "proto": "tcp", "rAddr": "172.31.7.64", "rPort": 8443 }
+			]
+		},
+		"H_VM": {
+			"detectMethod": "ping",
+			"detectInterval": 5,
+			"mode": "rr",
+			"rHosts": [
+				{ "enable": true, "proto": "tcp", "rAddr": "172.21.1.217", "rPort": 8443 },
+				{ "enable": true, "proto": "tcp", "rAddr": "172.21.1.218", "rPort": 8443 }
+			]
+		}
+	},
 	"ipsets" : {
 		"loopback": [
 			"127.0.0.1",
 			"::1"
 		],
 		"myVps": [
-			"a.mydomain.com",
-			"b.mydomain.com",
 			"222.1.2.0/24",
 			"123.234.112.8"
 		],

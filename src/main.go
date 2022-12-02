@@ -20,13 +20,16 @@ type wListItem struct {
 }
 
 type FwdRule struct {
-	Proto string `json:"proto"`
-	LAddr string `json:"lAddr"`
-	LPort int    `json:"lPort"`
-	RAddr string `json:"rAddr"`
-	RPort int    `json:"rPort"`
-	WList string `json:"whitelist"`
-	wl    []wListItem
+	Enable  bool   `json:"enable"`
+	Proto   string `json:"proto"`
+	LAddr   string `json:"lAddr"`
+	LPort   int    `json:"lPort"`
+	Backend string `json:"backend"`
+	bkend   *Backend
+	RAddr   string `json:"rAddr"`
+	RPort   int    `json:"rPort"`
+	WList   string `json:"whitelist"`
+	wl      []wListItem
 }
 
 func (r *FwdRule) CheckIp(ip net.IP) bool {
@@ -52,6 +55,7 @@ func (r *FwdRule) CheckIp(ip net.IP) bool {
 
 type Config struct {
 	Rules    []FwdRule           `json:"rules"`
+	Backends map[string]*Backend `json:"backends"`
 	IpSetMap map[string][]string `json:"ipsets"`
 }
 
@@ -92,6 +96,13 @@ func (c *Config) LoadFromFile(filename string) {
 			log.Println("Failed to process", strWl[i])
 		}
 		wlMap[name] = wlItem
+	}
+
+	for i := range c.Rules {
+		rule := &c.Rules[i]
+		if rule.Backend != "" {
+			rule.bkend = c.Backends[rule.Backend]
+		}
 	}
 
 	// set wlist items into rules
@@ -162,7 +173,19 @@ func (e *TCPFwdEntry) R2L() {
 }
 
 func (e *TCPFwdEntry) Run() {
-	addr := fmt.Sprintf("%s:%d", e.rule.RAddr, e.rule.RPort)
+	var addr string
+	if e.rule.bkend != nil {
+		rhost := e.rule.bkend.GetRHost()
+		if rhost == nil {
+			log.Println("get rhost failed")
+			e.connL.Close()
+			return
+		}
+		addr = fmt.Sprintf("%s:%d", rhost.RAddr, rhost.RPort)
+	} else {
+		addr = fmt.Sprintf("%s:%d", e.rule.RAddr, e.rule.RPort)
+	}
+	log.Println("TCP Connecting", addr)
 	connR, err := net.Dial(e.rule.Proto, addr)
 	if err != nil {
 		log.Println("Dial remote failed", err)
@@ -300,6 +323,10 @@ func RunFwdRuleUDP(rule FwdRule) {
 }
 
 func RunForwardRule(info FwdRule) {
+	if !info.Enable {
+		// log.Println("Ignore unenabled rule:", info)
+		return
+	}
 	if info.Proto == "udp" || info.Proto == "udp6" {
 		RunFwdRuleUDP(info)
 	} else {
@@ -329,11 +356,12 @@ func parseFwdRules(args []string) []FwdRule {
 		lp, _ := strconv.Atoi(ruleInfo[2])
 		rp, _ := strconv.Atoi(ruleInfo[4])
 		rules = append(rules, FwdRule{
-			Proto: ruleInfo[0],
-			LAddr: ruleInfo[1],
-			LPort: lp,
-			RAddr: ruleInfo[3],
-			RPort: rp,
+			Enable: true,
+			Proto:  ruleInfo[0],
+			LAddr:  ruleInfo[1],
+			LPort:  lp,
+			RAddr:  ruleInfo[3],
+			RPort:  rp,
 		})
 	}
 	return rules
@@ -345,10 +373,19 @@ func main() {
 	conf.LoadFromFile("config.json")
 	// log.Println(conf)
 	rules := parseFwdRules(os.Args[1:])
+
+	// run backend detect
+	for k := range conf.Backends {
+		log.Println("running detector", k)
+		bend := conf.Backends[k]
+		go bend.Detect()
+	}
+	// run command line rules
 	for idx := range rules {
 		rule := rules[idx]
 		go RunForwardRule(rule)
 	}
+	// run config file rules
 	for idx := range conf.Rules {
 		rule := conf.Rules[idx]
 		go RunForwardRule(rule)
